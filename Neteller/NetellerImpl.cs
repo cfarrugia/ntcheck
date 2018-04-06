@@ -1,15 +1,17 @@
 ﻿using Newtonsoft.Json;
 using NTCheck.Models;
+using PaysafeCheck;
 using RestSharp;
 using System;
 using System.Collections.Generic;
 using System.Configuration;
 using System.Net;
 using System.Text;
+using System.Threading.Tasks;
 
-namespace NTCheck
+namespace NTCheck.Neteller
 {
-    public class NetellerImpl
+    public class NetellerImpl : IUserVerifier
     {
         private string LiveBaseUrl { get { return ConfigurationManager.AppSettings["LiveBaseUrl"]; } }
         private string TestBaseUrl { get { return ConfigurationManager.AppSettings["TestBaseUrl"]; } }
@@ -40,45 +42,62 @@ namespace NTCheck
 
         }
 
-        public string CheckUserDetails(string accountId, string email)
+        public async Task<UserVerificationResponse> VerifyUser(string email, string accountId)
         {
             RestClient client = new RestClient(this.BaseUrl);
 
             var request = PrepareRequest(this.ClientUrl, Method.GET);
-            request.AddQueryParameter("accountId", accountId);
-            request.AddQueryParameter("email", email);
+
+            // Only email is used. accountid is ignored.
+            if (!string.IsNullOrEmpty(email))
+                request.AddQueryParameter("email", email);
+
             request.AddHeader("Content-Type", "application/json");
             // Step 1) Request an access token
-            string accessToken = GetAccessToken();
+            string accessToken = await GetAccessToken();
 
-            if (accessToken == "") return "";
 
-            // Otherwise add the access token and proceed.
+            UserVerificationResponse response = new UserVerificationResponse()
+            {
+                Email = email,
+                VerificationLevel = VerificationLevel.UnknownError
+            };
+
+            if (accessToken == "")
+            {
+                response.Error = "Authorization error to Neteller";
+                return response;
+            }
+
             request.AddHeader("Authorization", "Bearer " + accessToken);
 
-            client.ExecuteAsync<NetellerCustomerInfo>(request, (response) =>
+            var ntResponse = await client.ExecuteAsync<NetellerCustomerInfo>(request);
+
+            if (ntResponse.StatusCode == HttpStatusCode.OK)
             {
-                if (response.StatusCode == HttpStatusCode.OK)
-                {
-                    Console.WriteLine("Full Data Retrieved for a/c: {0} with email:{1}", accountId, email);
-                    Console.WriteLine(JsonConvert.SerializeObject(response.Data));
-                }
-                else
-                {
-                    Console.WriteLine("Error getting user details!");
-                }
-                
+                // A typical response is like this:
+                // { "CustomerId":"CUS_599A18D5-D37C-412D-B46D-8250E0D91E9A","AccountProfile":{ "accountId":"456723805165","firstName":null,"lastName":null,"email":"l.debattista@3be
+                // tgaming.com","address1":null,"address2":null,"address3":null,"city":null,"country":null,"postCode":null,"gender":null,"dateOfBrith":"0001 - 01 - 01T00: 00:00","prefe
+                // rences":null},"VerificationLevel":"00"}
+                response.VerificationLevel = VerificationLevel.AccountVerified;
+                response.AccountId = ntResponse.Data?.AccountProfile?.AccountId;
+                response.Payload = JsonConvert.SerializeObject(ntResponse.Data);
+                response.Error = "";
+            }
+            else
+            {
+                response.VerificationLevel = VerificationLevel.UserNotFound;
+                response.Error = $"Error getting user details! Status: {ntResponse.StatusCode}, Err: {ntResponse.ErrorMessage}";
+            }
 
-            });
-
-            return null;
+            return response;
         }
 
         /// <summary>
         /// Gets an Access token from Neteller in order to be able to make a deposit or Withdrawal
         /// </summary>
         /// <returns> A string with the access token to be used for subsequent calls</returns>
-        private string GetAccessToken()
+        private async Task<string> GetAccessToken()
         {
             RestClient client = new RestClient(this.BaseUrl);
 
@@ -87,15 +106,13 @@ namespace NTCheck
             request.AddHeader("Content-Type", "application/json");
             request.AddHeader("Cache-Control", "no-cache");
 
-            string token = "";
-            client.ExecuteAsync<NetellerAuthenticationResponse>(request, (resp) =>
-            {
-                if (resp.StatusCode == System.Net.HttpStatusCode.OK)
-                    token = resp.Data.AccessToken;
-                else
-                    Console.WriteLine("Unauthorized access to Neteller.");
-            });
 
+            string token = "";
+            var resp = await client.ExecuteAsync<NetellerAuthenticationResponse>(request);
+
+            if (resp.StatusCode == System.Net.HttpStatusCode.OK)
+                token = resp.Data.AccessToken;
+            
             return token;
         }
 

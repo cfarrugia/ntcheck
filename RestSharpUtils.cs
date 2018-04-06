@@ -1,9 +1,22 @@
 ﻿using Newtonsoft.Json;
+using RestSharp;
 using RestSharp.Serializers;
 using System.IO;
+using System.Threading.Tasks;
 
 namespace NTCheck
 {
+    public static class RestSharpUtils
+    {
+
+        public static Task<IRestResponse<T>> ExecuteAsync<T>(this RestClient client, IRestRequest request) where T : new()
+        {
+            var taskCompletionSource = new TaskCompletionSource<IRestResponse<T>>();
+            client.ExecuteAsync<T>(request, (response) => taskCompletionSource.SetResult(response));
+            return taskCompletionSource.Task;
+        }
+
+    }
     /// <summary>
     /// Use to override the dedault serialiser in Rest sharp and uses the newtonsoft one
     /// </summary>

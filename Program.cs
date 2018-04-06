@@ -1,59 +1,86 @@
-﻿using RestSharp;
+﻿using NTCheck.Neteller;
+using PaysafeCheck;
+using PaysafeCheck.Skrill;
+using RestSharp;
 using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 
 namespace NTCheck
 {
     class Program
     {
 
-
-        private static void CheckSingleUser(string accountId, string email, bool printDetails)
-        {
-
-            NetellerImpl impl = new NetellerImpl();
-            impl.CheckUserDetails(accountId, email);
-        }
-
-        static void Main(string[] args)
+        public static async Task Main(string[] args)
         {
 #if DEBUG
-            args = new string[] { "-single", "-accountid", "451724588290", "-email", "jaripekka.helminen@gmail.com" };
+            args = new string[] { "-single:neteller", "-email:jaripekka.helminen@gmail.com" };
 #endif
 
-            string defaultHelpArgs = "- To verify a file with list of uers: ntcheck.exe -mass -input <input.csv> -output <output.csv>\r\n" +
-                                     "- To verify a file with list of uers: ntcheck.exe -single -accountid <accountid> -email <email>";
-            if (args.Length == 0)
-            {
-                Console.WriteLine("no arguments input. Please use application as follows:");
-                Console.WriteLine(defaultHelpArgs);
-            }
-            else if (args[0] != "-mass" && args[0] != "-single")
-            {
-                Console.WriteLine("Invalid arguments {0}. Please use application as follows:", args[0]);
-                Console.WriteLine(defaultHelpArgs);
-            }
-            else if ((args[0] == "-mass") && (args[1] != "-input" || args[3] != "-output"))
-            {
-                Console.WriteLine("Invalid arguments for -mass import. Please use application as follows:", args[0]);
-                Console.WriteLine(defaultHelpArgs);
-            }
-            else if ((args[0] == "-single") && (args[1] != "-accountid" || args[3] != "-email"))
-            {
-                Console.WriteLine("Invalid arguments for -single account check. Please use application as follows:", args[0]);
-                Console.WriteLine(defaultHelpArgs);
-            }
-            else if (args[0] == "-single")
-            {
-                CheckSingleUser(args[2], args[4], true); // Show details for single user
-            }
-            else
-            {
-                throw new NotImplementedException("Mass is not implemented yet.");
-            }
 
+            string defaultHelpArgs = "- To verify a file with list of users: paysafecheck.exe -mass:<provider> -input:<input.csv> -output:<output.csv>\r\n" +
+                                     "- To verify a file with list of users: paysafecheck.exe -single:<provider> -accountid:<accountid> -email:<email>";
 
-            // Wait for input
-            Console.ReadLine();
+            try
+            {
+                Dictionary<string, string> parameters = args.ToDictionary(x => x.Split(":")[0], y => y.Split(":")[1]);
+
+                var provider = parameters.ContainsKey("-single") ? parameters["-single"] : parameters["-mass"];
+                if (provider != "skrill" && provider != "neteller") throw new ArgumentException($"Unknown provider: {provider}");
+                IUserVerifier verifier = provider == "skrill" ? (IUserVerifier)new SkrillImpl() : (IUserVerifier)new NetellerImpl();
+
+                UserVerificationResponse resp = null; // Stores the verification response object.
+
+                if (parameters.ContainsKey("-single"))
+                {
+                    var email = parameters["-email"]; // email is compulsory for both skrill / neteller.
+
+                    string accountId = null;
+
+                    if (provider == "skrill")
+                    {
+                        if (parameters.ContainsKey("accountid")) accountId = parameters["accountid"];
+                        else throw new ArgumentException("account id cannot be null for skrill");
+                    }
+
+                    try
+                    {
+                        resp = await verifier.VerifyUser(email, accountId);
+                    }
+                    catch (Exception ex) 
+                    {
+                        Console.WriteLine($"An unknown error has occurred: {ex.ToString()}");
+                        return;
+                    }
+
+                    switch (resp.VerificationLevel)
+                    {
+                        case VerificationLevel.UnknownError: Console.WriteLine($"Unknown Error occurred: {resp.Error}"); break;
+                        case VerificationLevel.UserNotFound: Console.WriteLine($"Input user was not found. Error: {resp.Error}"); break;
+                        case VerificationLevel.AccountVerified: Console.WriteLine($"Account was verified for email: {resp.Email} / accountid: {resp.AccountId}"); break;
+                        case VerificationLevel.AccountIsActive: Console.WriteLine($"Account was verified and active for email: {resp.Email} / accountid: {resp.AccountId}"); break;
+                    }
+
+                    Console.WriteLine("PayLoad:");
+                    Console.WriteLine(resp.Payload);
+
+                }
+                else if (parameters.ContainsKey("-mass"))
+                {
+                    throw new NotImplementedException("Mass import is not implemented yet");
+                }
+                else throw new ArgumentException("Unknown command (must be -single or -mass");
+
+#if DEBUG
+                Console.ReadLine();
+#endif
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Invalid inputs: {ex.ToString()}");
+                Console.WriteLine(defaultHelpArgs);
+            }
         }
     }
 }

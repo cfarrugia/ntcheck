@@ -13,12 +13,12 @@ namespace NTCheck.Neteller
 {
     public class NetellerImpl : IUserVerifier
     {
-        private string LiveBaseUrl { get { return ConfigurationManager.AppSettings["LiveBaseUrl"]; } }
-        private string TestBaseUrl { get { return ConfigurationManager.AppSettings["TestBaseUrl"]; } }
+        private string LiveBaseUrl { get { return ConfigurationManager.AppSettings["NetellerLiveBaseUrl"]; } }
+        private string TestBaseUrl { get { return ConfigurationManager.AppSettings["NetellerTestBaseUrl"]; } }
 
-        private string ClientUrl { get { return ConfigurationManager.AppSettings["ClientUrl"]; } }
+        private string ClientUrl { get { return ConfigurationManager.AppSettings["NetellerClientUrl"]; } }
 
-        private string AuthUrl { get { return ConfigurationManager.AppSettings["AuthUrl"]; } }
+        private string AuthUrl { get { return ConfigurationManager.AppSettings["NetellerAuthUrl"]; } }
         
         private string BaseUrl { get { return this.IsTest ? TestBaseUrl : LiveBaseUrl; } }
 

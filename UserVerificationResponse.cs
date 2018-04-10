@@ -6,7 +6,8 @@ namespace PaysafeCheck
 {
     public enum VerificationLevel
     {
-        UnknownError = 0, 
+        NotProcessedYet = -2,
+        UnknownError = -1, 
         UserNotFound = 1,
         AccountVerified = 2, 
         AccountIsActive = 3

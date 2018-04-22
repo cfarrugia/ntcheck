@@ -1,4 +1,5 @@
-﻿using NTCheck.Neteller;
+﻿using Newtonsoft.Json.Linq;
+using NTCheck.Neteller;
 using PaysafeCheck;
 using PaysafeCheck.Skrill;
 using RestSharp;
@@ -10,6 +11,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
+
 namespace NTCheck
 {
     class Program
@@ -19,10 +21,8 @@ namespace NTCheck
         {
 #if DEBUG
             args = new string[] { "-single:skrill", "-email:clyfar@gmail.com", "-accountid:16787555" };
-            args = new string[] { "-mass:neteller", @"-input:C:\Users\c.farrugia.BETAGY\Desktop\nt\list.csv", "-accountid:16787555" };
+            args = new string[] { "-mass:neteller", @"-input:C:\Users\c.farrugia.BETAGY\Desktop\nt\list.txt" };
 #endif
-
-
             string defaultHelpArgs = "- To verify a file with list of users: paysafecheck.exe -mass:<provider> -input:<input.csv> -output:<output.csv>\r\n" +
                                      "- To verify a file with list of users: paysafecheck.exe -single:<provider> -accountid:<accountid> -email:<email>";
 
@@ -87,26 +87,7 @@ namespace NTCheck
                     else
                         allLines.ForEach(x => allDetails.Add(new UserVerificationResponse() { Email = x[0], AccountId = x[1] }));
 
-
-                    (List<UserVerificationResponse> success, List<UserVerificationResponse> failed) massResponse = (success:null, failed:null);
-                    try
-                    {
-
-                        decimal maxIterationsPerDay = (provider == "neteller") ?
-                            Convert.ToDecimal(ConfigurationManager.AppSettings["NetellerMaxChecksPerDay"]) :
-                            Convert.ToDecimal(ConfigurationManager.AppSettings["SkrillMaxChecksPerDay"]);
-
-                        massResponse = await ProcessMassDetails(verifier, maxIterationsPerDay, allDetails);
-                    }
-                    finally
-                    {
-                        if (massResponse.success != null && massResponse.success.Count > 0)
-                            await SaveCSV(massResponse.success, true, path.Replace(".csv", "") + "_success.csv");
-
-                        if (massResponse.failed != null && massResponse.failed.Count > 0)
-                            await SaveCSV(massResponse.failed, true, path.Replace(".csv", "") + "_failed.csv");
-
-                    }
+                    await ProcessMassDetails(verifier, allDetails, path);
                 }
                 else throw new ArgumentException("Unknown command (must be -single or -mass");
 
@@ -123,26 +104,65 @@ namespace NTCheck
             }
         }
 
-        public static async Task SaveCSV(List<UserVerificationResponse> responses, bool includeVerificationLevel, string path)
+        public static async Task SaveCSV(bool includeVerificationLevel, string path, bool appendIfExists, params UserVerificationResponse[] responses)
         {
             var delimeter = ConfigurationManager.AppSettings["CsvDelimeter"][0];
             string[] lines = responses.Select(x => x.Email + delimeter + x.AccountId + (includeVerificationLevel ? delimeter + x.VerificationLevel.ToString() : "")).ToArray();
 
-            await File.WriteAllLinesAsync(path, lines);
+            if (File.Exists(path) && appendIfExists)
+                await File.AppendAllLinesAsync(path, lines);
+            else
+                await File.WriteAllLinesAsync(path, lines);
         }
 
-        public static async Task<(List<UserVerificationResponse> success, List<UserVerificationResponse> failed)> 
-            ProcessMassDetails(IUserVerifier verifier, decimal maxCheckPerDay, List<UserVerificationResponse> inputDetails)
+        public static async Task<VerificationLevel> VerifyEmail(string email)
+        {
+          
+            try
+            {
+                string serviceUrl = ConfigurationManager.AppSettings["EmailVerificationServiceUrl"].Replace("{email}", email);
+                Uri uri = new Uri(serviceUrl);
+
+                // Override default RestSharp JSON deserializer
+                var client = new RestClient(serviceUrl.Replace("/{email}", ""));
+                client.AddHandler("application/json", new DynamicJsonDeserializer());
+
+                // Get response from the verification service.
+                var response = client.Execute<dynamic>(new RestRequest(serviceUrl, Method.GET));
+                if (response.StatusCode != System.Net.HttpStatusCode.OK) return VerificationLevel.EmailVerificationServiceFailed;
+
+                //
+                var address = response?.Data?.address?.Value;
+                var validFormat = response?.Data?.validFormat?.Value;
+                var deliverable = response?.Data?.deliverable?.Value;
+                var hostExists = response?.Data?.hostExists?.Value;
+
+                if (validFormat == null || validFormat == false || address == null || address != email) return VerificationLevel.EmailInvalid;
+
+                if (deliverable == null || deliverable == false || hostExists == null || hostExists == false) return VerificationLevel.EmailNotDeliverable;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error verifiying email address: {ex.ToString()}");
+                return VerificationLevel.EmailVerificationServiceFailed;
+            }
+
+            // Add this point all checks are good!
+            return VerificationLevel.EmailVerified;
+        }
+
+        public static async Task ProcessMassDetails(IUserVerifier verifier, List<UserVerificationResponse> inputDetails, string path)
         {
             var successList = new List<UserVerificationResponse>();
             
             
             Random rng = new Random();
-            var averageIntervalInSeconds = 24.0m * 3600m / maxCheckPerDay;
-            int minInterval = (int)(0.5m * averageIntervalInSeconds);
-            int maxInterval = (int)(1.5m * averageIntervalInSeconds);
+            var averageAccountCheckIntervalInSeconds = 24.0m * 3600m / verifier.MaximumChecksPerDay;
+            int minAccountCheckInterval = (int)(0.5m * averageAccountCheckIntervalInSeconds);
+            int maxAccountCheckInterval = (int)(1.5m * averageAccountCheckIntervalInSeconds);
 
-
+            // For the email verifier there is no need to make it look organic.
+            var averageEmailVerifierIntervalInSeconds = 24.0m * 3600m / Convert.ToDecimal(ConfigurationManager.AppSettings["EmailMaxChecksPerDay"]);
 
             bool firstTime = true;
             var readLineTask = Task.Run(async () =>
@@ -151,36 +171,71 @@ namespace NTCheck
                 else await Task.Delay(TimeSpan.MaxValue);
             });
 
+         
 
-
-            for (int i = 0; i < inputDetails.Count; i++)
-            {
-                var waitInterval = Task.Run(async () =>
+            var waitEmailCheckInterval
+                = Task.Run(async () =>
                 {
-                    var interval = rng.Next(minInterval, maxInterval);
-                    Console.WriteLine($"Waiting for {interval} seconds");
-                    await Task.Delay(interval * 1000);
+
+                    Console.WriteLine($"Waiting for {averageEmailVerifierIntervalInSeconds} seconds to verify email address");
+                    await Task.Delay((int)averageEmailVerifierIntervalInSeconds * 1000);
                 });
 
-                // Wait either a readline or the delay. 
-                if (await Task.WhenAny(readLineTask, waitInterval) == readLineTask)
-                    break; // If signalled to break the loop, exit now. 
 
-                // 
-                var currentLine = inputDetails[0];
+            try
+            {
+                while (inputDetails.Count > 0)
+                {
 
-#if DEBUG
-                var 
-                    lineResponse = currentLine;
-#else
-                var lineResponse = await verifier.VerifyUser(currentLine.Email, currentLine.AccountId);
+                    // Wait either a readline or the delay to check the email.. 
+                    if (await Task.WhenAny(readLineTask, waitEmailCheckInterval) == readLineTask)
+                        break; // If signalled to break the loop, exit now. 
+
+                    // 
+                    var currentLine = inputDetails[0];
+
+                    //
+                    Console.WriteLine($"Checking Email: {currentLine.Email}");
+
+                    // Verify the email. If the verification level is good, proceed to the account verification
+                    currentLine.VerificationLevel = await VerifyEmail(currentLine.Email);
+
+                    if (currentLine.VerificationLevel == VerificationLevel.EmailVerified)
+                    {
+                        //
+                        Console.WriteLine($"Email Verified.");
+
+                        var waitAccountCheckInterval = Task.Run(async () =>
+                        {
+                            var interval = rng.Next(minAccountCheckInterval, maxAccountCheckInterval);
+                            Console.WriteLine($"Waiting for {interval} seconds to verify account");
+                            await Task.Delay(interval * 1000);
+                        });
+
+                        // Wait either a readline or the delay. 
+                        if (await Task.WhenAny(readLineTask, waitAccountCheckInterval) == readLineTask)
+                            break; // If signalled to break the loop, exit now. 
+
+#if !DEBUG
+                        currentLine = await verifier.VerifyUser(currentLine.Email, currentLine.AccountId);
 #endif
-                successList.Add(lineResponse);
-                inputDetails.RemoveAt(0);
-            }
+                    }
+                    else
+                    {
+                        Console.WriteLine($"Invalid Email: {currentLine.VerificationLevel}");
+                    }
 
-            // Return list.
-            return (success: successList, failed: inputDetails);
+                    // This line is processed now! Save it.
+                    successList.Add(currentLine);
+                    await SaveCSV(true, path.Replace(".csv", "") + "_success.csv", true, currentLine);
+                    inputDetails.RemoveAt(0);
+                }
+
+            }
+            finally
+            {
+                await SaveCSV(true, path, false, inputDetails.ToArray());
+            }
         }
 
     }

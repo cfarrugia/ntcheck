@@ -1,5 +1,6 @@
 ﻿using Newtonsoft.Json;
 using RestSharp;
+using RestSharp.Deserializers;
 using RestSharp.Serializers;
 using System.IO;
 using System.Threading.Tasks;
@@ -16,7 +17,27 @@ namespace NTCheck
             return taskCompletionSource.Task;
         }
 
+        public static Task<IRestResponse> ExecuteAsync(this RestClient client, IRestRequest request)
+        {
+            var taskCompletionSource = new TaskCompletionSource<IRestResponse>();
+            client.ExecuteAsync(request, (response) => taskCompletionSource.SetResult(response));
+            return taskCompletionSource.Task;
+        }
     }
+
+
+    public class DynamicJsonDeserializer : IDeserializer
+    {
+        public string RootElement { get; set; }
+        public string Namespace { get; set; }
+        public string DateFormat { get; set; }
+
+        public T Deserialize<T>(IRestResponse response)
+        {
+            return JsonConvert.DeserializeObject<dynamic>(response.Content);
+        }
+    }
+
     /// <summary>
     /// Use to override the dedault serialiser in Rest sharp and uses the newtonsoft one
     /// </summary>

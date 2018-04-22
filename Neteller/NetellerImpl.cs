@@ -13,6 +13,8 @@ namespace NTCheck.Neteller
 {
     public class NetellerImpl : IUserVerifier
     {
+        public decimal MaximumChecksPerDay { get { return Convert.ToDecimal(ConfigurationManager.AppSettings["NetellerMaxChecksPerDay"]); } }
+
         private string LiveBaseUrl { get { return ConfigurationManager.AppSettings["NetellerLiveBaseUrl"]; } }
         private string TestBaseUrl { get { return ConfigurationManager.AppSettings["NetellerTestBaseUrl"]; } }
 

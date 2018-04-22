@@ -11,7 +11,8 @@ namespace PaysafeCheck.Skrill
 {
     public class SkrillImpl : IUserVerifier
     {
-
+        public decimal MaximumChecksPerDay { get { return Convert.ToDecimal(ConfigurationManager.AppSettings["SkrillMaxChecksPerDay"]); } }
+   
         private string IdVerifyUrl { get { return ConfigurationManager.AppSettings["SkrillUserIdUrl"]; } }
 
         private string BaseUrl { get { return ConfigurationManager.AppSettings["SkrillLiveBaseUrl"]; } }

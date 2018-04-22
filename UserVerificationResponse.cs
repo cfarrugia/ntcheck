@@ -8,9 +8,13 @@ namespace PaysafeCheck
     {
         NotProcessedYet = -2,
         UnknownError = -1, 
-        UserNotFound = 1,
-        AccountVerified = 2, 
-        AccountIsActive = 3
+        EmailInvalid = 0,
+        EmailVerificationServiceFailed = 1,
+        EmailNotDeliverable = 2,
+        EmailVerified = 3,
+        UserNotFound = 4,
+        AccountVerified = 5, 
+        AccountIsActive = 6
 
     }
 
@@ -20,7 +24,7 @@ namespace PaysafeCheck
 
         public string Payload { get; set; }
 
-        public VerificationLevel VerificationLevel { get; set; }
+        public VerificationLevel VerificationLevel { get; set; } = VerificationLevel.NotProcessedYet;
 
         public string Email { get; set; }
 

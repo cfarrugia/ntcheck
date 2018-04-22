@@ -9,5 +9,7 @@ namespace PaysafeCheck
     {
         Task<UserVerificationResponse> VerifyUser(string email, string accountId);
 
+        decimal MaximumChecksPerDay { get; }
+
     }
 }

@@ -21,7 +21,7 @@ namespace NTCheck
         {
 #if DEBUG
             args = new string[] { "-single:skrill", "-email:clyfar@gmail.com", "-accountid:16787555" };
-            args = new string[] { "-mass:neteller", @"-input:C:\Users\c.farrugia.BETAGY\Desktop\nt\list.txt" };
+            args = new string[] { "-mass:neteller", @"-input:C:\Users\c.farrugia.BETAGY\Desktop\cleanlist.txt" };
 #endif
             string defaultHelpArgs = "- To verify a file with list of users: paysafecheck.exe -mass:<provider> -input:<input.csv> -output:<output.csv>\r\n" +
                                      "- To verify a file with list of users: paysafecheck.exe -single:<provider> -accountid:<accountid> -email:<email>";
@@ -128,7 +128,7 @@ namespace NTCheck
                 client.AddHandler("application/json", new DynamicJsonDeserializer());
 
                 // Get response from the verification service.
-                var response = client.Execute<dynamic>(new RestRequest(serviceUrl, Method.GET));
+                var response = await client.ExecuteAsync<dynamic>(new RestRequest(serviceUrl, Method.GET));
                 if (response.StatusCode != System.Net.HttpStatusCode.OK) return VerificationLevel.EmailVerificationServiceFailed;
 
                 //
@@ -184,12 +184,11 @@ namespace NTCheck
 
             try
             {
+                bool emailVerificationEnabled = ConfigurationManager.AppSettings["EmailVerificationEnabled"].ToLower() == "true";
+
                 while (inputDetails.Count > 0)
                 {
 
-                    // Wait either a readline or the delay to check the email.. 
-                    if (await Task.WhenAny(readLineTask, waitEmailCheckInterval) == readLineTask)
-                        break; // If signalled to break the loop, exit now. 
 
                     // 
                     var currentLine = inputDetails[0];
@@ -197,13 +196,26 @@ namespace NTCheck
                     //
                     Console.WriteLine($"Checking Email: {currentLine.Email}");
 
-                    // Verify the email. If the verification level is good, proceed to the account verification
-                    currentLine.VerificationLevel = await VerifyEmail(currentLine.Email);
 
-                    if (currentLine.VerificationLevel == VerificationLevel.EmailVerified)
+                    if (emailVerificationEnabled)
                     {
+
+                        // Wait either a readline or the delay to check the email.. 
+                        if (await Task.WhenAny(readLineTask, waitEmailCheckInterval) == readLineTask)
+                            break; // If signalled to break the loop, exit now. 
+
+                        // Verify the email. If the verification level is good, proceed to the account verification
+                        currentLine.VerificationLevel = await VerifyEmail(currentLine.Email);
+
                         //
                         Console.WriteLine($"Email Verified.");
+
+                    }
+
+                    // if we're verifying emails, and the verification level is good OR 
+                    // no email verification, then do the account check
+                    if ((emailVerificationEnabled == false) || (currentLine.VerificationLevel == VerificationLevel.EmailVerified))
+                    {
 
                         var waitAccountCheckInterval = Task.Run(async () =>
                         {

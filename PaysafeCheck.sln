@@ -5,6 +5,8 @@ VisualStudioVersion = 15.0.27428.2002
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "PaysafeCheck", "PaysafeCheck.csproj", "{5B74BDD2-4028-4DB5-A1CF-922F1117B466}"
 EndProject
+Project("{9092AA53-FB77-4645-B42D-1CCCA6BD08BD}") = "NodeProxy", "..\NodeProxy\NodeProxy.njsproj", "{170F9E0A-1EEE-4E0F-8DE7-229F6F7603E6}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -15,6 +17,10 @@ Global
 		{5B74BDD2-4028-4DB5-A1CF-922F1117B466}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{5B74BDD2-4028-4DB5-A1CF-922F1117B466}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{5B74BDD2-4028-4DB5-A1CF-922F1117B466}.Release|Any CPU.Build.0 = Release|Any CPU
+		{170F9E0A-1EEE-4E0F-8DE7-229F6F7603E6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{170F9E0A-1EEE-4E0F-8DE7-229F6F7603E6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{170F9E0A-1EEE-4E0F-8DE7-229F6F7603E6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{170F9E0A-1EEE-4E0F-8DE7-229F6F7603E6}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
